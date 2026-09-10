@@ -57,7 +57,7 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: openrouter/free
+        value: openai/gpt-4o
 
       # ---- optional -----------------------------------------------
       - key: GEOCODER_URL
