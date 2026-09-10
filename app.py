@@ -630,6 +630,15 @@ def swayamvar(req: SwayamvarRequest, user: dict = Depends(auth.optional_user)):
 
     results.sort(key=lambda r: r["total"], reverse=True)
 
+    if user:
+        try:
+            sp = req.self_person
+            save_person(user["id"], sp.name, sp.dob, sp.tob, sp.place)
+            for cand in req.candidates:
+                save_person(user["id"], cand.name, cand.dob, cand.tob, cand.place)
+        except Exception:
+            pass
+
     summary = None
     if user and results and naksha.configured():
         try:
@@ -943,6 +952,49 @@ def load_profile(uid):
             (uid,)).fetchone()
 
 
+def _person_id(name, dob, tob, place):
+    import hashlib
+    key = f"{(name or '').strip()}|{dob}|{tob}|{(place or '').strip()}".lower()
+    return hashlib.sha1(key.encode()).hexdigest()[:16]
+
+
+def save_person(uid, name, dob, tob, place, cur=None):
+    """Remember someone a signed-in user entered details for."""
+    if not (uid and dob and tob and (place or "").strip() and (name or "").strip()):
+        return
+    pid = _person_id(name, dob, tob, place)
+    with _conn(cur) as c:
+        c.execute(
+            "INSERT INTO people (user_id,person_id,name,dob,tob,place,updated_at) "
+            "VALUES (?,?,?,?,?,?,?) ON CONFLICT (user_id,person_id) DO UPDATE SET "
+            "name=excluded.name, place=excluded.place, updated_at=excluded.updated_at",
+            (uid, pid, name.strip(), dob, tob, place.strip(), time.time()),
+        )
+
+
+@app.get("/api/people")
+def list_people(user: dict = Depends(auth.require_user)):
+    with dbmod.cursor() as c:
+        rows = c.execute(
+            "SELECT person_id,name,dob,tob,place FROM people WHERE user_id=? "
+            "ORDER BY updated_at DESC LIMIT 40", (user["id"],)).fetchall()
+    return {"people": rows}
+
+
+@app.post("/api/people")
+def add_person(body: ProfileBody, user: dict = Depends(auth.require_user)):
+    save_person(user["id"], body.name, body.dob, body.tob, body.place)
+    return {"person_id": _person_id(body.name, body.dob, body.tob, body.place)}
+
+
+@app.delete("/api/people/{person_id}")
+def del_person(person_id: str, user: dict = Depends(auth.require_user)):
+    with dbmod.cursor() as c:
+        c.execute("DELETE FROM people WHERE user_id=? AND person_id=?",
+                  (user["id"], person_id))
+    return {"ok": True}
+
+
 @app.get("/api/profile")
 def get_profile(user: dict = Depends(auth.require_user)):
     return load_profile(user["id"]) or {}
@@ -995,6 +1047,7 @@ def make_reading(req: ReadingRequest, _rl=Depends(_rl_reading),
         # signed in? remember their details so they never retype them
         if user:
             save_profile(user["id"], req.name, req.dob, req.tob, req.place, req.phone, cur=c)
+            save_person(user["id"], req.name, req.dob, req.tob, req.place, cur=c)
 
     return {
         "whatsapp_link": wa.claim_link(code),
