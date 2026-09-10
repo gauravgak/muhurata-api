@@ -35,6 +35,7 @@ from matching import match as guna_match
 from horoscope import horoscope as build_horoscope
 import naksha
 import predictions as preds
+import tarot as tarot_mod
 import divisionals, kp as kp_engine, ashtakvarga, avakhada as avakhada_mod
 from glyphs import all_glyphs_svg_defs
 from pdf_report import build_pdf, LEGACY_SECTION_ORDER
@@ -1050,3 +1051,23 @@ def horoscope_ep(period: str = "today"):
     if period not in ("today", "tomorrow", "monthly", "yearly"):
         raise HTTPException(422, "period must be today, tomorrow, monthly or yearly")
     return build_horoscope(period)
+
+
+class TarotRequest(BaseModel):
+    question: str = Field(default="", max_length=400)
+    spread: str = Field(default="three", pattern="^(one|three|cross)$")
+    seed: str | None = Field(default=None, max_length=64)
+
+
+@app.post("/api/tarot")
+def tarot_ep(req: TarotRequest, _rl=Depends(_rl_llm), user: dict = Depends(auth.require_user)):
+    """Draw a spread and read it. LLM-written in Naksha's voice — a
+    confident reading, not a disclaimer. Requires sign-in (LLM cost)."""
+    cards = tarot_mod.draw(req.spread, req.seed)
+    first = (user.get("email") or "").split("@")[0]
+    try:
+        reading_text = tarot_mod.generate_reading(req.question, cards, first)
+    except Exception as e:
+        raise HTTPException(502, f"Could not read the cards just now: {e}")
+    return {"spread": req.spread, "question": req.question, "cards": cards,
+            "reading": reading_text}
