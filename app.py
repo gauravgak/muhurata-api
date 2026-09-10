@@ -498,9 +498,36 @@ def naksha_chat(req: NakshaRequest, _rl=Depends(_rl_llm), user: dict = Depends(a
 
     uid = user["id"]
 
+    # Signed in with saved birth details but no page context? Load the
+    # profile, compute the chart, and hand Naksha the same context the
+    # page would — so it never re-asks a logged-in user for their details.
+    if not req.context:
+        prof = load_profile(uid)
+        if prof and prof.get("dob") and prof.get("tob") and prof.get("place"):
+            try:
+                pdt = datetime.strptime(f"{prof['dob']} {prof['tob']}", "%Y-%m-%d %H:%M")
+                plat, plon, _ = geocode(prof["place"])
+                pk = cache_key(f"{pdt.isoformat()}@5.5", plat, plon)
+                pch = get_chart(pk, pdt, plat, plon, 5.5)
+                prun = running_dasha(pch) or {}
+                pdev = ishta_devata(pch)
+                req.context = {
+                    "name": prof.get("name"), "dob": prof["dob"],
+                    "tob": prof["tob"], "place": prof["place"],
+                    "lagna": pch["ascendant"]["sign"], "moon_sign": pch["moon_sign"],
+                    "nakshatra": pch["birth_nakshatra"],
+                    "mahadasha": prun.get("mahadasha"), "antardasha": prun.get("antardasha"),
+                    "ishta_devata": pdev["devata"],
+                    "positions": [{"name": p["name"], "sign": p["sign"],
+                                   "house": p["house"], "retrograde": p["retrograde"]}
+                                  for p in pch["positions"]],
+                }
+            except Exception:
+                pass
+
     # Layer 1: FAQ. Free, instant, never touches the quota. Skipped once
-    # the person has a chart on the page — then even "what is a dasha?"
-    # deserves an answer about THEIR dasha, not the glossary entry.
+    # there is chart context — then even "what is a dasha?" deserves an
+    # answer about THEIR dasha, not the glossary entry.
     if not req.context:
         faq = naksha.match_faq(latest)
         if faq:
@@ -907,13 +934,18 @@ def save_profile(uid, name, dob, tob, place, phone, cur=None):
         )
 
 
+def load_profile(uid):
+    if not uid:
+        return None
+    with dbmod.cursor() as c:
+        return c.execute(
+            "SELECT name,dob,tob,place,phone FROM profiles WHERE user_id=?",
+            (uid,)).fetchone()
+
+
 @app.get("/api/profile")
 def get_profile(user: dict = Depends(auth.require_user)):
-    with dbmod.cursor() as c:
-        row = c.execute(
-            "SELECT name,dob,tob,place,phone FROM profiles WHERE user_id=?",
-            (user["id"],)).fetchone()
-    return row or {}
+    return load_profile(user["id"]) or {}
 
 
 @app.put("/api/profile")

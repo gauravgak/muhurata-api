@@ -24,7 +24,7 @@ import os
 import db
 import time
 import urllib.request
-from datetime import date
+from datetime import datetime, timedelta, timezone
 
 FREE_DAILY_LIMIT = 5
 
@@ -146,7 +146,8 @@ def check_and_increment(user_id: str, cost: bool):
     A page refresh no longer resets the count, and a fresh identity now
     needs a real Google account. The naksha_usage table is created by
     migrations/0002, not here."""
-    today = date.today().isoformat()
+    # reset the daily quota at midnight IST, not UTC
+    today = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
 
     with db.cursor() as c:
         row = c.execute(
