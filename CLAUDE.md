@@ -145,14 +145,15 @@ push to the GitHub repo Netlify watches.
 
 ## Next / in progress
 
-- **Saved people picker** (decided, not built): a `people` table keyed to
-  the Supabase user id. Every birth-details form submit by a signed-in
-  user auto-saves that person. Add `GET/POST/DELETE /api/people`. UI: a
-  "pick a saved person" dropdown above each birth form and on each
-  Swayamvar partner row (fills the fields), **and** a row of saved-people
-  chips inside Naksha (tap → Naksha reads that person's chart).
-  **Picking a person in Naksha is FREE** — it does not decrement the
-  daily 5; only follow-up LLM questions do.
+- **Saved people picker** — built. `people` table + `GET/POST/DELETE
+  /api/people`; auto-saves on `/api/reading` and `/api/swayamvar`, and
+  the frontend POSTs on matching/kundali submits too. `people.js`
+  exposes `mhSavePerson`, `mhPeopleSelect(map)`, `mhFillFromPerson`.
+  "Pick a saved person" `<select>` is mounted on the hero form,
+  free-kundali, matching (both sides), Swayamvar "You" + each partner
+  row, and the kundli form. **Still TODO:** the saved-people chip row
+  *inside Naksha* (tap a name → free chart card, no quota hit) is not
+  built yet.
 - **Deploy still needs:** `OPENROUTER_MODEL=openai/gpt-4o` in Render env
   (Naksha/tarot/predictions run on the rate-limited free tier until set);
   rescue-dump the old Render Postgres into Supabase; wire an uptime
