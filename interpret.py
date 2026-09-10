@@ -29,7 +29,7 @@ SIGN_TRAITS = {
     "Dhanu": "big-picture, honest, freedom-loving",
     "Makara": "patient, hardworking, built for the long run",
     "Kumbha": "independent-minded, a little detached, drawn to the unusual",
-    "Meena": "sensitive, imaginative, easily affected by the mood around them",
+    "Meena": "sensitive, imaginative, easily affected by the mood around you",
 }
 
 HOUSE_MEANING = {
@@ -192,26 +192,29 @@ DOMAIN_LABEL = {
     "relationships": "house of partnership", "career": "house of career and standing",
 }
 
-# When no planet occupies the house. This is the common case for most
-# houses in most charts, so it is framed as "runs on its own terms",
-# never as a lack or an emptiness. Each string is a complete sentence
-# (starts capitalised) so it reads cleanly after the trait sentence.
+# When no planet occupies the house — the common case for most houses in
+# most charts. Framed as an actual reading ("shaped by the sign and its
+# ruler"), never as a lack. Each string is a complete sentence and names
+# the sign's ruler so two charts get genuinely different text.
 DOMAIN_QUIET = {
-    "money": "No planet sits in this house — true for most charts — so money "
-             "and family run quietly in the background rather than being a "
-             "constant theme, taking their shape from {sign} and from wherever "
-             "that sign's ruler sits.",
-    "health": "No planet sits in this house, which is normal, so day-to-day "
-              "work and health mostly look after themselves unless you neglect "
-              "them; {sign} colours how they feel more than any single planet "
-              "does.",
-    "relationships": "No planet sits in this house, as in most charts, so "
-                     "partnership isn't a loud, driving force here — it takes "
-                     "its temper from {sign} and from that sign's ruler "
-                     "wherever it sits.",
-    "career": "No planet sits in this house, which is the norm, so your "
-              "standing builds steadily from the nature of {sign} and its "
-              "ruler's placement rather than from a planet pushing hard on it.",
+    "money": "Money and family aren't driven hard by any one planet here — "
+             "{sign} sets the tone, and its ruler {ruler}, by the house it "
+             "occupies in your chart, is what actually shapes how income comes "
+             "in and how much of a backstop family turns out to be.",
+    "health": "Your daily work and health aren't dominated by a single planet "
+              "pulling at them; {sign} colours how the routine feels, and its "
+              "ruler {ruler} carries the real influence — so this area tends to "
+              "hold together on its own as long as you don't run it into the "
+              "ground.",
+    "relationships": "Partnership here isn't under loud, forcing pressure. It "
+                     "takes its temperament from {sign}, and the real story is "
+                     "written by where that sign's ruler {ruler} sits — that "
+                     "placement says far more about your close relationships "
+                     "than this house being unoccupied does.",
+    "career": "Your standing builds steadily rather than being pushed by a "
+              "planet parked here: {sign} gives your public life its character, "
+              "and its ruler {ruler}, by the house it falls in, shows where "
+              "your work and reputation actually gain ground.",
 }
 
 
@@ -238,7 +241,9 @@ def _life_area(chart, house: int, domain: str) -> str:
     base = f"{domain_opener} {trait_lc}"
 
     if not occupants:
-        return base + " " + DOMAIN_QUIET[domain].format(sign=sign)
+        from matching import SIGN_LORD
+        ruler = SIGN_LORD.get(sign, "its ruler")
+        return base + " " + DOMAIN_QUIET[domain].format(sign=sign, ruler=ruler)
 
     natures = [PLANET_NATURE.get(p, "demanding") for p in occupants]
     n_support = natures.count("supportive")
