@@ -384,6 +384,18 @@ async def lifespan(_app: FastAPI):
         except Exception:
             pass
         await asyncio.sleep(2 ** attempt)
+
+    # Run pending migrations on startup. Render's free plan has no
+    # pre-deploy step, and the build-time run can miss (wrong build
+    # command, env vars added later). Migrations are idempotent and this
+    # process runs a single worker, so a startup run is safe. Never fatal.
+    try:
+        import migrate
+        applied = await asyncio.to_thread(migrate.main)
+        print(f"[lifespan] migrate.main() -> {applied}", flush=True)
+    except Exception as e:
+        print(f"[lifespan] migration run failed (non-fatal): {e}", flush=True)
+
     yield
     dbmod.close_pool()
 

@@ -43,7 +43,11 @@ def _connect():
         url = _URL
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
-        return psycopg.connect(url, autocommit=False, connect_timeout=10)
+        # prepare_threshold=None: required when this goes through Supabase's
+        # transaction pooler (port 6543), which rejects prepared statements.
+        # Harmless on a direct / session-pooler connection.
+        return psycopg.connect(url, autocommit=False, connect_timeout=15,
+                               prepare_threshold=None)
     return sqlite3.connect(SQLITE_PATH)
 
 
