@@ -671,11 +671,15 @@ def _pdf_sections(chart, running, devata, first_name, chart_key):
     produce, so a PDF always renders."""
     rule_based = reading(chart, running, devata, first_name)
 
+    # v2: bumped to drop cached sections written during the window when a
+    # reasoning model was leaking its scratchpad into the section text.
+    _pfx = "pdf2:"
+
     def _cache_get(section):
         with dbmod.cursor() as c:
             row = c.execute(
                 "SELECT text FROM predictions WHERE chart_key=? AND section=?",
-                (chart_key, "pdf:" + section)).fetchone()
+                (chart_key, _pfx + section)).fetchone()
         return row["text"] if row else None
 
     def _cache_put(section, text):
@@ -684,7 +688,7 @@ def _pdf_sections(chart, running, devata, first_name, chart_key):
                 "INSERT INTO predictions (chart_key, section, text, created_at) "
                 "VALUES (?,?,?,?) ON CONFLICT (chart_key, section) DO UPDATE SET "
                 "text = excluded.text, created_at = excluded.created_at",
-                (chart_key, "pdf:" + section, text, time.time()))
+                (chart_key, _pfx + section, text, time.time()))
 
     def _fallback(section):
         return rule_based.get(_PDF_FALLBACK_KEY.get(section, section), "")

@@ -241,6 +241,14 @@ def generate_section(chart: dict, running: dict, section_key: str,
     text = _clean_reply(text or "")
     if not text:
         raise RuntimeError("the model returned an empty response — try again")
+    # Guard against a reasoning model leaking its planning notes into the
+    # answer (belt-and-braces alongside reasoning={"exclude": true}). Such
+    # text must never be cached as a real section.
+    head = text[:160].lower()
+    if any(m in head for m in (
+        "we need to", "let's parse", "let's think", "let me ", "the user wants",
+        "first, i", "okay, so", "we must ", "i need to write", "we should ")):
+        raise RuntimeError("model returned reasoning scratchpad, not prose")
     return text
 
 
