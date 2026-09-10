@@ -32,3 +32,6 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Google OAuth client secret download — never commit
+client_secret_*.json
