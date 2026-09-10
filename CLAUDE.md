@@ -157,8 +157,9 @@ push to the GitHub repo Netlify watches.
   (Naksha/tarot/predictions run on the rate-limited free tier until set);
   rescue-dump the old Render Postgres into Supabase; wire an uptime
   pinger at `/api/health` to stop the free-tier cold start.
-- **Deferred polish:** the fancy scroll date/time wheel picker (with the
-  centre zoom-lock) from the hero form isn't reused on the other forms
-  (Swayamvar / kundli / free-services use native `<input type=date/time>`).
-  Extract it into a shared `window.mhWheelPicker(trigger, hidden)` and
-  apply everywhere.
+- **Wheel date/time picker is now shared** — `wheelpicker.js` (self-inject
+  overlay + event delegation). Any `<button class="wp-trigger"
+  data-target="<hiddenId>" data-kind="date|time">` + hidden input gets it.
+  Live on the hero form, Swayamvar (incl. dynamic partner rows) and the
+  kundli form. `window.mhWheelLabel(hiddenId, iso)` sets the label from a
+  prefill without opening the sheet.
