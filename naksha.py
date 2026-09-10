@@ -319,6 +319,10 @@ def call_openrouter(messages: list) -> dict:
         {"Authorization": "Bearer " + OPENROUTER_KEY,
          "HTTP-Referer": "https://muhurata.com", "X-Title": "Naksha"},
         {"model": OPENROUTER_MODEL, "max_tokens": MAX_TOKENS,
+         # Reasoning models (nemotron, deepseek-r1, …) otherwise leak their
+         # scratchpad into `content`; this returns the final answer only.
+         # Harmless for non-reasoning models like gpt-4o.
+         "reasoning": {"exclude": True},
          "messages": oi_messages, "tools": _tools_openai_shape()},
     )
     if "error" in resp:
@@ -360,6 +364,7 @@ def complete(system: str, user: str, max_tokens: int = 500) -> str:
             {"Authorization": "Bearer " + OPENROUTER_KEY,
              "HTTP-Referer": "https://muhurata.com", "X-Title": "Muhurata"},
             {"model": OPENROUTER_MODEL, "max_tokens": max_tokens,
+             "reasoning": {"exclude": True},   # final answer only, no scratchpad
              "messages": [{"role": "system", "content": system},
                           {"role": "user", "content": user}]},
         )

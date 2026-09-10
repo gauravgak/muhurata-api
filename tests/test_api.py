@@ -23,7 +23,9 @@ def _user_token():
 def test_health_ok(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "db": "ok"}
+    body = r.json()
+    assert body["ok"] is True and body["db"] == "ok"
+    assert "llm" in body and "configured" in body["llm"]
 
 
 def test_reading_happy_path(client, sample_reading_body):

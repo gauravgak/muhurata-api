@@ -916,7 +916,17 @@ def health(strict: bool = False):
     ok = dbmod.healthcheck()
     return JSONResponse(
         status_code=503 if (strict and not ok) else 200,
-        content={"ok": ok, "db": "ok" if ok else "degraded"},
+        content={
+            "ok": ok,
+            "db": "ok" if ok else "degraded",
+            "llm": {
+                "configured": naksha.configured(),
+                "provider": naksha.LLM_PROVIDER,
+                "model": (naksha.OPENROUTER_MODEL
+                          if naksha.LLM_PROVIDER == "openrouter"
+                          else naksha.ANTHROPIC_MODEL),
+            },
+        },
     )
 
 

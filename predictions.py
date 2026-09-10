@@ -218,6 +218,7 @@ def generate_section(chart: dict, running: dict, section_key: str,
             {"Authorization": "Bearer " + naksha.OPENROUTER_KEY,
              "HTTP-Referer": "https://muhurata.com", "X-Title": "Muhurata"},
             {"model": naksha.OPENROUTER_MODEL, "max_tokens": max_tokens,
+             "reasoning": {"exclude": True},   # final answer only, no scratchpad
              "messages": [{"role": "system", "content": PREDICTION_SYSTEM}] + messages},
         )
         if "error" in resp:
@@ -275,7 +276,9 @@ def generate_many(chart: dict, running: dict, name: str, section_keys,
                 except Exception:
                     pass
             return key, text
-        except Exception:
+        except Exception as e:
+            print(f"[pdf] section {key!r} fell back to rule-based: "
+                  f"{type(e).__name__}: {e}", flush=True)
             return key, (fallback(key) if fallback else "")
 
     if misses:
