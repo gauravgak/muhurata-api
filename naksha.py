@@ -348,6 +348,39 @@ def call_llm(messages: list) -> dict:
     raise RuntimeError(f"Unknown LLM_PROVIDER '{LLM_PROVIDER}'")
 
 
+def complete(system: str, user: str, max_tokens: int = 500) -> str:
+    """One-shot plain-prose completion (no tools). Shared by predictions,
+    tarot and swayamvar. Raises on an unreachable / empty model."""
+    if not configured():
+        raise RuntimeError("LLM not configured")
+    if LLM_PROVIDER == "openrouter":
+        resp = _post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {"Authorization": "Bearer " + OPENROUTER_KEY,
+             "HTTP-Referer": "https://muhurata.com", "X-Title": "Muhurata"},
+            {"model": OPENROUTER_MODEL, "max_tokens": max_tokens,
+             "messages": [{"role": "system", "content": system},
+                          {"role": "user", "content": user}]},
+        )
+        if "error" in resp:
+            raise RuntimeError(resp["error"].get("message", "LLM error"))
+        choices = resp.get("choices") or []
+        text = (choices[0].get("message", {}).get("content") if choices else None) or ""
+    else:
+        resp = _post(
+            "https://api.anthropic.com/v1/messages",
+            {"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"},
+            {"model": ANTHROPIC_MODEL, "max_tokens": max_tokens, "system": system,
+             "messages": [{"role": "user", "content": user}]},
+        )
+        text = "".join(b.get("text", "") for b in resp.get("content", [])
+                       if b.get("type") == "text")
+    text = _clean_reply(text or "")
+    if not text:
+        raise RuntimeError("the model returned an empty response — try again")
+    return text
+
+
 def run_tool(name: str, tool_input: dict, chart_fn, horoscope_fn, match_fn):
     """Dispatch a tool call to the real, already-tested service functions.
     Never invents data - if geocoding or validation fails, the error

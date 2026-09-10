@@ -556,11 +556,34 @@ def naksha_chat(req: NakshaRequest, _rl=Depends(_rl_llm), user: dict = Depends(a
     return {**result, "source": "llm", "remaining_today": remaining, "limit_reached": False}
 
 
+_SWAYAMVAR_SYSTEM = """You are Naksha comparing marriage matches for \
+someone at Muhurata. Warm, direct, decisive. Plain text only — no \
+markdown, no bullets, no headers.
+
+You are given a ranked list of guna-milan results (score out of 36, \
+verdict, whether Mangal dosha is present) for each candidate. Write 2 \
+short paragraphs: first, name the strongest match and say plainly why \
+it stands out; then a quick honest word on the others — where a lower \
+score or a Mangal dosha actually matters and where it doesn't (Mangal \
+dosha is commonly cancelled when both charts carry it or by other \
+classical exceptions). End with a clear recommendation. Give a reading, \
+not a disclaimer."""
+
+
+def _swayamvar_summary(self_name, self_role, results):
+    lines = [f"{self_name or 'The person'} is the "
+             f"{'groom' if self_role == 'boy' else 'bride'}. Candidates, "
+             f"best first:"]
+    for r in results:
+        lines.append(f"- {r['name']}: {r['total']}/{r['out_of']} ({r['verdict']})"
+                     + (", Mangal dosha present" if r['mangal_dosha'] else ""))
+    return naksha.complete(_SWAYAMVAR_SYSTEM, "\n".join(lines), max_tokens=380)
+
+
 @app.post("/api/swayamvar")
-def swayamvar(req: SwayamvarRequest):
+def swayamvar(req: SwayamvarRequest, user: dict = Depends(auth.optional_user)):
     """Match one person against several candidates at once, ranked by
-    score. Same guna_match under the hood, run once per candidate -
-    no new astrology, just a useful way to compare several at a time."""
+    score. Signed-in users also get an LLM comparison and recommendation."""
     t0 = time.perf_counter()
     self_chart = _chart_for(req.self_person)
 
@@ -579,11 +602,20 @@ def swayamvar(req: SwayamvarRequest):
         })
 
     results.sort(key=lambda r: r["total"], reverse=True)
+
+    summary = None
+    if user and results and naksha.configured():
+        try:
+            summary = _swayamvar_summary(req.self_person.name, req.self_role, results)
+        except Exception:
+            summary = None
+
     return {
         "ms": round((time.perf_counter() - t0) * 1000, 2),
         "self": req.self_person.name,
         "results": results,
         "best_match": results[0]["name"] if results else None,
+        "summary": summary,
     }
 
 
