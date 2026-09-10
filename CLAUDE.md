@@ -139,5 +139,26 @@ push to the GitHub repo Netlify watches.
   pages' inline CSS already runs on.
 - **Chart calculation stays deterministic and testable.** No LLM in the
   ephemeris or interpretation path. `chart_engine.py` / `interpret.py`
-  stay pure functions of their inputs. The LLM is only for Naksha chat
-  and the long-form `/api/predictions` sections.
+  stay pure functions of their inputs. The LLM is only for Naksha chat,
+  the long-form `/api/predictions` sections, `/api/tarot`, and the
+  signed-in `/api/swayamvar` comparison summary.
+
+## Next / in progress
+
+- **Saved people picker** (decided, not built): a `people` table keyed to
+  the Supabase user id. Every birth-details form submit by a signed-in
+  user auto-saves that person. Add `GET/POST/DELETE /api/people`. UI: a
+  "pick a saved person" dropdown above each birth form and on each
+  Swayamvar partner row (fills the fields), **and** a row of saved-people
+  chips inside Naksha (tap → Naksha reads that person's chart).
+  **Picking a person in Naksha is FREE** — it does not decrement the
+  daily 5; only follow-up LLM questions do.
+- **Deploy still needs:** `OPENROUTER_MODEL=openai/gpt-4o` in Render env
+  (Naksha/tarot/predictions run on the rate-limited free tier until set);
+  rescue-dump the old Render Postgres into Supabase; wire an uptime
+  pinger at `/api/health` to stop the free-tier cold start.
+- **Deferred polish:** the fancy scroll date/time wheel picker (with the
+  centre zoom-lock) from the hero form isn't reused on the other forms
+  (Swayamvar / kundli / free-services use native `<input type=date/time>`).
+  Extract it into a shared `window.mhWheelPicker(trigger, hidden)` and
+  apply everywhere.
