@@ -852,8 +852,47 @@ def health(strict: bool = False):
     )
 
 
+# ---------------------------------------------------------------- profile
+class ProfileBody(BaseModel):
+    name: str = Field(default="", max_length=120)
+    dob: str = Field(default="", max_length=10)
+    tob: str = Field(default="", max_length=5)
+    place: str = Field(default="", max_length=160)
+    phone: str = Field(default="", max_length=20)
+
+
+def save_profile(uid, name, dob, tob, place, phone, cur=None):
+    """Upsert a signed-in user's birth details so every form can prefill."""
+    if not uid:
+        return
+    with _conn(cur) as c:
+        c.execute(
+            "INSERT INTO profiles (user_id,name,dob,tob,place,phone,updated_at) "
+            "VALUES (?,?,?,?,?,?,?) ON CONFLICT (user_id) DO UPDATE SET "
+            "name=excluded.name, dob=excluded.dob, tob=excluded.tob, "
+            "place=excluded.place, phone=excluded.phone, updated_at=excluded.updated_at",
+            (uid, name or "", dob or "", tob or "", place or "", phone or "", time.time()),
+        )
+
+
+@app.get("/api/profile")
+def get_profile(user: dict = Depends(auth.require_user)):
+    with dbmod.cursor() as c:
+        row = c.execute(
+            "SELECT name,dob,tob,place,phone FROM profiles WHERE user_id=?",
+            (user["id"],)).fetchone()
+    return row or {}
+
+
+@app.put("/api/profile")
+def put_profile(body: ProfileBody, user: dict = Depends(auth.require_user)):
+    save_profile(user["id"], body.name, body.dob, body.tob, body.place, body.phone)
+    return {"ok": True}
+
+
 @app.post("/api/reading")
-def make_reading(req: ReadingRequest, _rl=Depends(_rl_reading)):
+def make_reading(req: ReadingRequest, _rl=Depends(_rl_reading),
+                 user: dict = Depends(auth.optional_user)):
     t0 = time.perf_counter()
 
     # Honeypot: real users never fill the hidden field. Silently accept
@@ -888,6 +927,10 @@ def make_reading(req: ReadingRequest, _rl=Depends(_rl_reading)):
         lead_id = save_lead(req, key, cur=c)
         msg = whatsapp_text(sections)
         code = make_claim(msg, first, lead_id, cur=c)
+
+        # signed in? remember their details so they never retype them
+        if user:
+            save_profile(user["id"], req.name, req.dob, req.tob, req.place, req.phone, cur=c)
 
     return {
         "whatsapp_link": wa.claim_link(code),
@@ -1057,13 +1100,19 @@ class TarotRequest(BaseModel):
     question: str = Field(default="", max_length=400)
     spread: str = Field(default="three", pattern="^(one|three|cross)$")
     seed: str | None = Field(default=None, max_length=64)
+    # the face-down positions the person tapped, in order — the draw is
+    # seeded from these so the cards they chose are the cards they get.
+    picks: list[int] | None = Field(default=None, max_length=6)
 
 
 @app.post("/api/tarot")
 def tarot_ep(req: TarotRequest, _rl=Depends(_rl_llm), user: dict = Depends(auth.require_user)):
     """Draw a spread and read it. LLM-written in Naksha's voice — a
     confident reading, not a disclaimer. Requires sign-in (LLM cost)."""
-    cards = tarot_mod.draw(req.spread, req.seed)
+    seed = req.seed
+    if req.picks:
+        seed = (req.question.strip() + "|" + ",".join(str(int(p)) for p in req.picks))[:200]
+    cards = tarot_mod.draw(req.spread, seed)
     first = (user.get("email") or "").split("@")[0]
     try:
         reading_text = tarot_mod.generate_reading(req.question, cards, first)
