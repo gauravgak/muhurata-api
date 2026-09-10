@@ -128,8 +128,15 @@ push to the GitHub repo Netlify watches.
   vanish.** Supabase Pro, Render Starter, Cloudflare free. Keep the
   off-platform `pg_dump` habit. Design every change so the database or a
   service being gone tomorrow is survivable.
-- **Design language: calm, bright, dharmic.** Warm wood tones, cream
-  backgrounds. No harsh reds. Quiet motion, generous spacing.
+- **Design language: bold & modern (Astrotalk-style, chosen Sep 2026,
+  supersedes the earlier "calm dharmic serif" brief).** Near-black warm
+  ground, one bright amber accent (`--brass` ≈ `#f4b52e`), **Space
+  Grotesk** everywhere in heavy weights, fat rounded pill buttons
+  (`--pill`), oversized punchy headlines, marketing hero with a hook, a
+  sticky top nav. Dark-committed — the old light/dark toggle is
+  neutralised. Still no harsh reds (the red roles map to amber). The
+  whole look is driven from `theme.css`, which remaps the tokens the
+  pages' inline CSS already runs on.
 - **Chart calculation stays deterministic and testable.** No LLM in the
   ephemeris or interpretation path. `chart_engine.py` / `interpret.py`
   stay pure functions of their inputs. The LLM is only for Naksha chat
