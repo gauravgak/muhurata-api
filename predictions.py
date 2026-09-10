@@ -19,6 +19,7 @@ readable, specific prose. That distinction is the whole point.
 """
 
 import json
+import time
 
 import naksha
 from naksha import _clean_reply
@@ -200,7 +201,10 @@ def generate_section(chart: dict, running: dict, section_key: str,
     facts = _chart_facts(chart, running)
     who = f" for {name}" if name else ""
     length = sec.get("length", "two to three short paragraphs")
-    max_tokens = 220 if "sentence" in length else (300 if "one paragraph" in length else 700)
+    # Headroom: a reasoning model still generates (hidden) thinking tokens
+    # even with reasoning excluded, and they eat this budget — too tight a
+    # cap truncates the visible answer mid-sentence.
+    max_tokens = 500 if "sentence" in length else (650 if "one paragraph" in length else 1100)
     user_msg = (
         f"Write the '{sec['title']}' section of a birth chart reading{who}, "
         f"focusing on {sec['focus']}.\n\n"
@@ -254,7 +258,7 @@ def generate_section(chart: dict, running: dict, section_key: str,
 
 def generate_many(chart: dict, running: dict, name: str, section_keys,
                   cache_get=None, cache_put=None, fallback=None,
-                  max_workers: int = 4) -> dict:
+                  max_workers: int = 3) -> dict:
     """Generate several sections at once for the PDF reading.
 
     cache_get(key) / cache_put(key, text): optional persistence, so a
@@ -276,18 +280,25 @@ def generate_many(chart: dict, running: dict, name: str, section_keys,
             misses.append(key)
 
     def _one(key):
-        try:
-            text = generate_section(chart, running, key, name)
-            if cache_put:
-                try:
-                    cache_put(key, text)
-                except Exception:
-                    pass
-            return key, text
-        except Exception as e:
-            print(f"[pdf] section {key!r} fell back to rule-based: "
-                  f"{type(e).__name__}: {e}", flush=True)
-            return key, (fallback(key) if fallback else "")
+        # one retry — a free model often 429s or returns a stub on the
+        # first hit of a 10-section burst and succeeds on a second try
+        last = None
+        for attempt in (1, 2):
+            try:
+                text = generate_section(chart, running, key, name)
+                if cache_put:
+                    try:
+                        cache_put(key, text)
+                    except Exception:
+                        pass
+                return key, text
+            except Exception as e:
+                last = e
+                if attempt == 1:
+                    time.sleep(1.5)
+        print(f"[pdf] section {key!r} fell back to rule-based: "
+              f"{type(last).__name__}: {last}", flush=True)
+        return key, (fallback(key) if fallback else "")
 
     if misses:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
