@@ -1,0 +1,20 @@
+# Direct dependencies pinned to exact versions. This is a stopgap lock —
+# regenerate a full hash-locked tree from requirements.in with:
+#
+#     pip install uv && uv pip compile requirements.in -o requirements.txt --generate-hashes
+#
+# Until then, exact pins on the direct deps still make a redeploy far more
+# predictable than the previous ">=" ranges.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+pyswisseph==2.10.3.2
+reportlab==4.2.5
+svglib==1.5.1
+
+psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
+
+pyjwt[crypto]==2.10.1

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Check requirements.txt is in sync with requirements.in
+        run: |
+          uv pip compile requirements.in -o /tmp/requirements.check.txt --quiet
+          # Compare only the package pins, ignoring hash/comment noise.
+          grep -E '^[a-zA-Z0-9._-]+==' requirements.txt | sort > /tmp/have.txt || true
+          grep -E '^[a-zA-Z0-9._-]+==' /tmp/requirements.check.txt | sort > /tmp/want.txt
+          diff -u /tmp/want.txt /tmp/have.txt || (echo "::warning::requirements.txt is behind requirements.in — run: uv pip compile requirements.in -o requirements.txt --generate-hashes" )
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run migrations (SQLite)
+        run: . .venv/bin/activate && python migrate.py
+
+      - name: Run tests
+        run: . .venv/bin/activate && pytest

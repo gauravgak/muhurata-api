@@ -1,0 +1,66 @@
+# Render blueprint. Database is Supabase (free tier) — no `databases:`
+# block here. DATABASE_URL / DIRECT_URL come from the Supabase dashboard.
+#
+# Free plan notes:
+#   - the web service sleeps after 15 min idle (~50s cold start)
+#   - no pre-deploy command on free, so migrations run in buildCommand
+#     (env vars ARE available at build time)
+#   - 0.1 CPU / 512 MB -> a single uvicorn worker
+
+services:
+  - type: web
+    name: muhurata-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python migrate.py
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+
+      # ---- database (Supabase, free) --------------------------------
+      # Transaction pooler, port 6543 — used by the app.
+      - key: DATABASE_URL
+        sync: false
+      # Direct connection, port 5432 — used only by migrate.py.
+      - key: DIRECT_URL
+        sync: false
+      - key: DB_POOL_MAX
+        value: "6"
+
+      # ---- auth (Supabase) ----------------------------------------
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+
+      # ---- whatsapp ---------------------------------------------------
+      - key: WA_TOKEN
+        sync: false
+      - key: WA_PHONE_ID
+        sync: false
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: WA_APP_SECRET
+        sync: false
+      - key: WA_BUSINESS_NUMBER
+        sync: false
+
+      # ---- llm ------------------------------------------------------
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+
+      # ---- optional -----------------------------------------------
+      - key: GEOCODER_URL
+        sync: false
+      - key: TURNSTILE_SECRET
+        sync: false

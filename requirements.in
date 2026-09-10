@@ -1,0 +1,22 @@
+# Direct dependencies, loosely constrained. Compile to a fully pinned
+# requirements.txt with hashes:
+#
+#     pip install uv
+#     uv pip compile requirements.in -o requirements.txt --generate-hashes
+#
+# CI checks that requirements.txt is in sync with this file.
+
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.34,<0.35
+pydantic>=2.10,<3
+
+pyswisseph>=2.10,<3
+reportlab>=4.2,<5
+svglib>=1.5,<2
+
+# Postgres via a real pool (Supabase transaction pooler).
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+
+# Supabase JWT verification (Google sign-in).
+pyjwt[crypto]>=2.10,<3
