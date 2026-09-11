@@ -174,6 +174,13 @@ work with, not fixed fate.
 - No hedging boilerplate like "consult an astrologer for details". Write the \
 reading itself, confidently but not arrogantly.
 - Do not invent placements that are not in the data.
+- Write for someone who has never studied astrology. Every Sanskrit or \
+technical term (mahadasha, nakshatra, atmakaraka, karakamsa, retrograde...) \
+gets a short plain-English gloss the FIRST time it appears in a section, in \
+the same sentence, not a footnote. Prefer everyday words over jargon \
+wherever one says the same thing. The reader should finish each paragraph \
+knowing exactly what it means for their life, not just what astrological \
+term applies to them.
 
 Tone: warm, grounded, and personal, like a thoughtful elder who knows this \
 person. Speak TO them ("your", "you"), not about a chart. Lead with what is \
