@@ -20,3 +20,7 @@ psycopg-pool>=3.2,<4
 
 # Supabase JWT verification (Google sign-in).
 pyjwt[crypto]>=2.10,<3
+
+# QR codes for the manual UPI-via-WhatsApp pay flow. Pure Python, zero
+# dependencies of its own.
+segno>=1.6,<2

@@ -30,6 +30,7 @@ from ratelimit import limiter
 from chart_engine import compute_chart, running_dasha, ishta_devata, cache_key
 from interpret import reading, whatsapp_text
 import whatsapp as wa
+import upi
 from chart_svg import north_indian, south_indian, navamsa_north
 from matching import match as guna_match
 from horoscope import horoscope as build_horoscope
@@ -1098,6 +1099,82 @@ def leads(limit: int = 100, _admin: dict = Depends(auth.require_admin)):
     return rows
 
 
+# ---------------------------------------------------------------- payments
+# Manual UPI-via-WhatsApp: no gateway, no automated verification. A "Pay"
+# button opens the buyer's UPI app with the amount pre-filled (or they
+# scan the QR below), then they send a screenshot on WhatsApp. That
+# screenshot is logged as a claim for an admin to verify and fulfil by
+# hand — see wa_webhook's image branch, and the monetisation plan.
+@app.get("/api/pay/qr")
+def pay_qr(amount: float, note: str = ""):
+    """SVG QR code for a upi://pay link at this amount. Public - it's the
+    same information as showing your UPI ID on the page, just scannable."""
+    if not upi.configured():
+        raise HTTPException(503, "Payments aren't set up yet.")
+    if not (1 <= amount <= 5000):
+        raise HTTPException(422, "Unexpected amount.")
+    svg = upi.qr_svg(upi.pay_link(amount, note))
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@app.get("/api/pay/link")
+def pay_link_ep(amount: float, note: str = ""):
+    """The same upi://pay link as a tap-to-pay URL (for mobile, where
+    tapping it opens the UPI app directly), plus the plain VPA text as a
+    last-resort fallback if a buyer's UPI app can't handle deep links."""
+    if not upi.configured():
+        raise HTTPException(503, "Payments aren't set up yet.")
+    if not (1 <= amount <= 5000):
+        raise HTTPException(422, "Unexpected amount.")
+    return {"link": upi.pay_link(amount, note), "vpa": upi.UPI_VPA}
+
+
+@app.get("/api/admin/payment-claims")
+def list_payment_claims(status: str = "pending", limit: int = 50,
+                        _admin: dict = Depends(auth.require_admin)):
+    """Screenshots WhatsApp has received, with a best-effort guess at
+    which lead they belong to (same phone number, most recent). Confirm
+    the actual payment yourself before sending anything - this list is a
+    queue to work through, not proof of payment."""
+    with dbmod.cursor() as c:
+        rows = c.execute(
+            "SELECT pc.id, pc.phone, pc.media_id, pc.received_at, pc.status, "
+            "l.name AS lead_name, l.dob AS lead_dob, l.tob AS lead_tob, l.place AS lead_place "
+            "FROM payment_claims pc LEFT JOIN leads l ON l.id = pc.lead_guess_id "
+            "WHERE pc.status=? ORDER BY pc.received_at DESC LIMIT ?",
+            (status, limit)).fetchall()
+    return rows
+
+
+@app.get("/api/admin/payment-claims/{claim_id}/image")
+def payment_claim_image(claim_id: int, _admin: dict = Depends(auth.require_admin)):
+    """Proxies the screenshot from WhatsApp's media API. Meta's media
+    URLs need a bearer token to fetch, and expire - keep WA_TOKEN
+    server-side rather than ever handing it to a browser."""
+    with dbmod.cursor() as c:
+        row = c.execute("SELECT media_id FROM payment_claims WHERE id=?", (claim_id,)).fetchone()
+    if not row or not row["media_id"]:
+        raise HTTPException(404, "No such claim.")
+    try:
+        data, mime = wa.fetch_media(row["media_id"])
+    except Exception as e:
+        raise HTTPException(502, f"Could not fetch the image from WhatsApp: {e}")
+    return Response(content=data, media_type=mime)
+
+
+@app.post("/api/admin/payment-claims/{claim_id}/resolve")
+def resolve_payment_claim(claim_id: int, status: str = "done",
+                          _admin: dict = Depends(auth.require_admin)):
+    """Marks a claim done/rejected once you've verified the payment and
+    sent the report yourself. Bookkeeping only - never sends anything."""
+    if status not in ("done", "rejected"):
+        raise HTTPException(422, "status must be 'done' or 'rejected'.")
+    with dbmod.cursor() as c:
+        c.execute("UPDATE payment_claims SET status=?, resolved_at=? WHERE id=?",
+                  (status, time.time(), claim_id))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- whatsapp
 def make_claim(message: str, name: str, lead_id: int, cur=None) -> str:
     code = secrets.token_hex(3).upper()      # 6 chars, e.g. 4F9A2C
@@ -1141,9 +1218,27 @@ async def wa_webhook(request: Request):
         body = json.loads(raw)
     except ValueError:
         raise HTTPException(400, "bad body")
-    frm, text = wa.parse_incoming(body)
+    frm, text, media = wa.parse_incoming(body)
     if not frm:
         return {"ok": True}                   # delivery receipt, ignore
+
+    # A photo is almost always a payment screenshot for the manual
+    # UPI-via-WhatsApp flow (see the monetisation plan). Acknowledge it
+    # immediately and log it for an admin to verify and fulfil by hand -
+    # this endpoint never trusts an image as proof of payment on its own.
+    if media and media.get("type") == "image":
+        wa.send_text(frm, "Thanks! We've got your payment confirmation — "
+                          "your full report will be with you within the hour.")
+        with dbmod.cursor() as c:
+            guess = c.execute(
+                "SELECT id FROM leads WHERE phone=? ORDER BY created_at DESC LIMIT 1",
+                (frm,)).fetchone()
+            c.execute(
+                "INSERT INTO payment_claims (phone, wa_message_id, media_id, lead_guess_id, received_at) "
+                "VALUES (?,?,?,?,?)",
+                (frm, media.get("message_id"), media["media_id"],
+                 guess["id"] if guess else None, time.time()))
+        return {"ok": True, "claim_logged": True}
 
     code = None
     for token in (text or "").replace(":", " ").split():

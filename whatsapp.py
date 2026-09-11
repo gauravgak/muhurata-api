@@ -121,19 +121,26 @@ def send_template(to: str, template: str, lang: str = "en") -> dict:
 
 
 def parse_incoming(body: dict):
-    """Pull (from_number, text) out of a Cloud API webhook payload.
-    Returns (None, None) for delivery receipts and other non-message events."""
+    """Pull (from_number, text, media) out of a Cloud API webhook payload.
+    media is {"type": "image", "media_id": ...} for a photo (a payment
+    screenshot, most likely) and None otherwise. Returns (None, None,
+    None) for delivery receipts and other non-message events."""
     try:
         change = body["entry"][0]["changes"][0]["value"]
         msgs = change.get("messages")
         if not msgs:
-            return None, None
+            return None, None, None
         m = msgs[0]
+        if m.get("type") == "image":
+            img = m.get("image") or {}
+            return m.get("from"), "", ({"type": "image", "media_id": img["id"],
+                                         "message_id": m.get("id")}
+                                        if img.get("id") else None)
         if m.get("type") != "text":
-            return m.get("from"), ""
-        return m["from"], m["text"]["body"]
+            return m.get("from"), "", None
+        return m["from"], m["text"]["body"], None
     except (KeyError, IndexError, TypeError):
-        return None, None
+        return None, None, None
 
 
 def upload_media(pdf_bytes: bytes, filename: str = "reading.pdf") -> str:
@@ -167,6 +174,25 @@ def upload_media(pdf_bytes: bytes, filename: str = "reading.pdf") -> str:
     if "id" not in result:
         raise RuntimeError(f"Media upload failed: {result}")
     return result["id"]
+
+
+def fetch_media(media_id: str) -> tuple[bytes, str]:
+    """Downloads a media object WhatsApp sent us (e.g. a payment
+    screenshot), for the admin claims page. Two-step per Meta's API:
+    look up the (short-lived) URL by media id, then fetch it — both
+    calls need the same bearer token."""
+    if not configured():
+        raise RuntimeError("WhatsApp not configured")
+    req = urllib.request.Request(
+        f"{GRAPH}/{media_id}", headers={"Authorization": f"Bearer {WA_TOKEN}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        meta = json.loads(r.read())
+    url = meta.get("url")
+    if not url:
+        raise RuntimeError(f"No media URL for {media_id}: {meta}")
+    req2 = urllib.request.Request(url, headers={"Authorization": f"Bearer {WA_TOKEN}"})
+    with urllib.request.urlopen(req2, timeout=20) as r:
+        return r.read(), meta.get("mime_type", "application/octet-stream")
 
 
 def send_document(to: str, media_id: str, filename: str, caption: str = "") -> dict:

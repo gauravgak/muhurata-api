@@ -59,6 +59,10 @@ services:
       - key: OPENROUTER_MODEL
         value: openai/gpt-4o
 
+      # ---- manual UPI-via-WhatsApp payments --------------------------
+      - key: UPI_VPA
+        sync: false
+
       # ---- optional -----------------------------------------------
       - key: GEOCODER_URL
         sync: false

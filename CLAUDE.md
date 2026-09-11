@@ -145,20 +145,40 @@ push to the GitHub repo Netlify watches.
 
 ## Next / in progress
 
-- **Saved people picker** — built. `people` table + `GET/POST/DELETE
-  /api/people`; auto-saves on `/api/reading` and `/api/swayamvar`, and
-  the frontend POSTs on matching/kundali submits too. `people.js`
-  exposes `mhSavePerson`, `mhPeopleSelect(map)`, `mhFillFromPerson`.
-  "Pick a saved person" `<select>` is mounted on the hero form,
-  free-kundali, matching (both sides), Swayamvar "You" + each partner
-  row, and the kundli form. **Still TODO:** the saved-people chip row
-  *inside Naksha* (tap a name → free chart card, no quota hit) is not
-  built yet.
-- **Deploy still needs:** `OPENROUTER_MODEL=openai/gpt-4o` in Render env
-  (Naksha/tarot/predictions run on the rate-limited free tier until set);
-  rescue-dump the old Render Postgres into Supabase; wire an uptime
-  pinger at `/api/health` to stop the free-tier cold start.
-- **Wheel date/time picker is now shared** — `wheelpicker.js` (self-inject
+- **Saved people picker** — built, including the chip row *inside
+  Naksha* (tap a saved name → free chart card, no quota hit; `people.js`
+  also offers the signed-in user's own profile as a person).
+- **LLM provider** — currently `OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free`
+  (a real, working free model; the old `deepseek/*:free` slugs are gone
+  from OpenRouter). It's a reasoning model, so every OpenRouter call sets
+  `"reasoning": {"exclude": true}` (in both `naksha.py` and
+  `predictions.py`) or its scratchpad leaks into the reply; there's also
+  a belt-and-braces content check in `predictions.generate_section` that
+  refuses to cache anything that still looks like reasoning. Free-tier
+  daily request caps mean a 10-section PDF won't always fill every
+  section on the first try — `generate_many` retries once and caches
+  each section as it succeeds, so a given chart's PDF gets better over
+  repeat requests. `/api/health` reports `llm.configured` / `.provider` /
+  `.model` so this is never silently wrong again. Buying OpenRouter
+  credit and switching to a paid model (`gpt-4o-mini` for chat/tarot,
+  `gpt-4o` for the PDF) removes the cap entirely — revisit once volume
+  justifies it.
+- **Monetisation (in progress)** — see the roadmap: free chart + short
+  overview stays the funnel; the full PDF is a ₹51 unlock. Payment
+  collection is **manual UPI-via-WhatsApp**, not a gateway: `upi.py`
+  builds a `upi://pay` deep link + QR (`/api/pay/qr`, `/api/pay/link`,
+  needs `UPI_VPA` set), the buyer pays and sends a screenshot on
+  WhatsApp, `wa_webhook`'s image branch auto-acknowledges and logs a row
+  to `payment_claims` (migration `0005`), and `/api/admin/payment-claims*`
+  (+ `muhurata-site-11/admin-claims.html`) is where the admin verifies
+  and marks it done. **Nothing here verifies a payment or auto-sends the
+  report** — that's deliberately manual for now. Chat top-ups and a real
+  payment gateway are future phases once volume justifies the
+  gateway/KYC overhead — see the full roadmap for the plan.
+- **Deploy still needs:** rescue-dump the old Render Postgres into
+  Supabase; wire an uptime pinger at `/api/health` to stop the free-tier
+  cold start.
+- **Wheel date/time picker is shared** — `wheelpicker.js` (self-inject
   overlay + event delegation). Any `<button class="wp-trigger"
   data-target="<hiddenId>" data-kind="date|time">` + hidden input gets it.
   Live on the hero form, Swayamvar (incl. dynamic partner rows) and the
