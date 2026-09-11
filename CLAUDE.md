@@ -52,8 +52,9 @@ Two projects, deployed separately:
   a fast **HTTP 503** (no more 130s hangs).
 - **Schema:** `migrations/NNNN_*.sql` applied by `migrate.py` (tracked in
   `schema_migrations`, idempotent). Run as Render's **Pre-Deploy
-  Command**. Nothing creates tables at import time. `{{PK}}` is the one
-  dialect token. Add a migration; never hand-edit a live table.
+  Command**. Nothing creates tables at import time. `{{PK}}` and
+  `{{BLOB}}` are the dialect tokens. Add a migration; never hand-edit a
+  live table.
 - **Startup:** a FastAPI `lifespan` opens the pool with backoff; a DB
   that's briefly down does **not** crash boot — `/api/health` reports
   `{"ok":false,"db":"degraded"}` with a 503 until it recovers.
@@ -170,11 +171,15 @@ push to the GitHub repo Netlify watches.
   needs `UPI_VPA` set), the buyer pays and sends a screenshot on
   WhatsApp, `wa_webhook`'s image branch auto-acknowledges and logs a row
   to `payment_claims` (migration `0005`), and `/api/admin/payment-claims*`
-  (+ `muhurata-site-11/admin-claims.html`) is where the admin verifies
-  and marks it done. **Nothing here verifies a payment or auto-sends the
-  report** — that's deliberately manual for now. Chat top-ups and a real
-  payment gateway are future phases once volume justifies the
-  gateway/KYC overhead — see the full roadmap for the plan.
+  (+ `muhurata-site-11/admin-claims.html`) is where the admin verifies,
+  can one-click **generate the same LLM PDF `/api/reading/pdf` makes**
+  for the best-guessed lead (`_generate_full_pdf`, shared by both
+  endpoints) and stores it as `{{BLOB}}` bytes on the claim row itself
+  (migration `0006`) — **not on the server's disk**, which Render wipes
+  on every deploy — and marks it done. **Nothing here verifies a payment
+  or auto-sends the report** — that's deliberately manual for now. Chat
+  top-ups and a real payment gateway are future phases once volume
+  justifies the gateway/KYC overhead — see the full roadmap for the plan.
 - **Deploy still needs:** rescue-dump the old Render Postgres into
   Supabase; wire an uptime pinger at `/api/health` to stop the free-tier
   cold start.

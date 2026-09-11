@@ -15,9 +15,9 @@ Backend selection mirrors db.py:
     should not go through the transaction pooler.
   - SQLite otherwise (./muhurata.db).
 
-Dialect: write portable SQL. The single token {{PK}} is substituted with
+Dialect: write portable SQL. Two tokens are substituted: {{PK}} becomes
 "SERIAL PRIMARY KEY" (Postgres) or "INTEGER PRIMARY KEY AUTOINCREMENT"
-(SQLite).
+(SQLite); {{BLOB}} becomes "BYTEA" (Postgres) or "BLOB" (SQLite).
 """
 
 import glob
@@ -35,6 +35,10 @@ SQLITE_PATH = os.environ.get("SQLITE_PATH", "muhurata.db")
 
 def _pk() -> str:
     return "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+
+
+def _blob() -> str:
+    return "BYTEA" if IS_POSTGRES else "BLOB"
 
 
 def _connect():
@@ -86,7 +90,7 @@ def main() -> int:
             if name in done:
                 continue
             with open(path, "r", encoding="utf-8") as fh:
-                sql = fh.read().replace("{{PK}}", _pk())
+                sql = fh.read().replace("{{PK}}", _pk()).replace("{{BLOB}}", _blob())
 
             # Strip "--" line comments before splitting on ";" — our DDL
             # never puts "--" or ";" inside a string literal, and a ";"

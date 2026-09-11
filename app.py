@@ -702,33 +702,41 @@ def _pdf_sections(chart, running, devata, first_name, chart_key):
         cache_get=_cache_get, cache_put=_cache_put, fallback=_fallback)
 
 
-@app.post("/api/reading/pdf")
-def reading_pdf(req: ReadingRequest, theme: str = "light", _rl=Depends(_rl_pdf)):
-    """Same chart as /api/reading, as a downloadable PDF. The prose is
-    LLM-written and cached per chart; ?theme=light|dark picks the look."""
+def _generate_full_pdf(name: str, dob: str, tob: str, place: str,
+                       tz_offset: float = 5.5, theme: str = "light") -> bytes:
+    """The actual PDF-building work behind /api/reading/pdf, factored out
+    so the admin claims flow can generate the same document for a lead it
+    already has details for, without a second HTTP round-trip."""
     try:
-        local_dt = datetime.strptime(f"{req.dob} {req.tob}", "%Y-%m-%d %H:%M")
+        local_dt = datetime.strptime(f"{dob} {tob}", "%Y-%m-%d %H:%M")
     except ValueError:
         raise HTTPException(422, "Date must be YYYY-MM-DD and time HH:MM.")
-    lat, lon, _ = geocode(req.place)
-    key = cache_key(f"{local_dt.isoformat()}@{req.tz_offset}", lat, lon)
-    chart = get_chart(key, local_dt, lat, lon, req.tz_offset)
+    lat, lon, _ = geocode(place)
+    key = cache_key(f"{local_dt.isoformat()}@{tz_offset}", lat, lon)
+    chart = get_chart(key, local_dt, lat, lon, tz_offset)
     running = running_dasha(chart)
     devata = ishta_devata(chart)
-    first = req.name.strip().split()[0] if req.name.strip() else ""
+    first = name.strip().split()[0] if name.strip() else ""
     sections = _pdf_sections(chart, running, devata, first, key)
 
     avk = None
     try:
         from avakhada import avakhada as avakhada_fn
-        avk = avakhada_fn(chart, local_dt, lat, lon, req.tz_offset)
+        avk = avakhada_fn(chart, local_dt, lat, lon, tz_offset)
     except Exception:
         pass
 
-    pdf_bytes = build_pdf(chart, sections, req.name,
-                          theme="dark" if theme == "dark" else "light",
-                          avakhada_data=avk)
-    fname = f"muhurata-reading-{(first or 'chart').lower()}.pdf"
+    return build_pdf(chart, sections, name, theme="dark" if theme == "dark" else "light",
+                     avakhada_data=avk)
+
+
+@app.post("/api/reading/pdf")
+def reading_pdf(req: ReadingRequest, theme: str = "light", _rl=Depends(_rl_pdf)):
+    """Same chart as /api/reading, as a downloadable PDF. The prose is
+    LLM-written and cached per chart; ?theme=light|dark picks the look."""
+    pdf_bytes = _generate_full_pdf(req.name, req.dob, req.tob, req.place, req.tz_offset, theme)
+    first = req.name.strip().split()[0] if req.name.strip() else "chart"
+    fname = f"muhurata-reading-{first.lower()}.pdf"
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
@@ -1139,11 +1147,45 @@ def list_payment_claims(status: str = "pending", limit: int = 50,
     with dbmod.cursor() as c:
         rows = c.execute(
             "SELECT pc.id, pc.phone, pc.media_id, pc.received_at, pc.status, "
+            "(pc.pdf_generated_at IS NOT NULL) AS has_pdf, pc.lead_guess_id, "
             "l.name AS lead_name, l.dob AS lead_dob, l.tob AS lead_tob, l.place AS lead_place "
             "FROM payment_claims pc LEFT JOIN leads l ON l.id = pc.lead_guess_id "
             "WHERE pc.status=? ORDER BY pc.received_at DESC LIMIT ?",
             (status, limit)).fetchall()
     return rows
+
+
+@app.post("/api/admin/payment-claims/{claim_id}/generate-pdf")
+def generate_claim_pdf(claim_id: int, _admin: dict = Depends(auth.require_admin)):
+    """Generates the same LLM-written PDF /api/reading/pdf makes, for the
+    lead this claim is best-guessed to belong to, and stores the bytes on
+    the claim row - NOT on the server's disk, which Render wipes on every
+    deploy. Confirm the guessed lead is actually right before trusting
+    this; it's the same phone-number heuristic shown in the claims list."""
+    with dbmod.cursor() as c:
+        row = c.execute(
+            "SELECT l.name, l.dob, l.tob, l.place FROM payment_claims pc "
+            "JOIN leads l ON l.id = pc.lead_guess_id WHERE pc.id=?", (claim_id,)).fetchone()
+    if not row or not (row["dob"] and row["tob"] and row["place"]):
+        raise HTTPException(
+            422, "No matched lead with full birth details for this claim — "
+                "verify who it is by hand and use /api/reading/pdf directly.")
+    pdf_bytes = _generate_full_pdf(row["name"] or "", row["dob"], row["tob"], row["place"])
+    with dbmod.cursor() as c:
+        c.execute("UPDATE payment_claims SET pdf_bytes=?, pdf_generated_at=? WHERE id=?",
+                  (pdf_bytes, time.time(), claim_id))
+    return {"ok": True, "bytes": len(pdf_bytes)}
+
+
+@app.get("/api/admin/payment-claims/{claim_id}/pdf")
+def claim_pdf(claim_id: int, _admin: dict = Depends(auth.require_admin)):
+    """Downloads a previously-generated PDF for this claim."""
+    with dbmod.cursor() as c:
+        row = c.execute("SELECT pdf_bytes FROM payment_claims WHERE id=?", (claim_id,)).fetchone()
+    if not row or not row["pdf_bytes"]:
+        raise HTTPException(404, "No PDF generated yet for this claim.")
+    return Response(content=bytes(row["pdf_bytes"]), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="claim-{claim_id}.pdf"'})
 
 
 @app.get("/api/admin/payment-claims/{claim_id}/image")

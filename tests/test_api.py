@@ -122,6 +122,42 @@ def test_payment_claims_requires_admin(client):
     ).status_code == 200
 
 
+def test_payment_claim_generate_and_download_pdf(client, monkeypatch, sample_reading_body):
+    admin = {"Authorization": f"Bearer {_admin_token()}"}
+    # a real lead first, so the phone-number guess actually finds it
+    r = client.post("/api/reading", json=sample_reading_body)
+    assert r.status_code == 200, r.text
+    _wa_signed_post(client, monkeypatch, _wa_image_payload(
+        frm=sample_reading_body["phone"], media_id="wamid-media-pdf"))
+    rows = client.get("/api/admin/payment-claims", headers=admin).json()
+    claim = next(r for r in rows if r["media_id"] == "wamid-media-pdf")
+    assert claim["lead_name"] == sample_reading_body["name"]
+    assert claim["has_pdf"] in (0, False)
+
+    gen = client.post(f"/api/admin/payment-claims/{claim['id']}/generate-pdf", headers=admin)
+    assert gen.status_code == 200, gen.text
+    assert gen.json()["bytes"] > 0
+
+    dl = client.get(f"/api/admin/payment-claims/{claim['id']}/pdf", headers=admin)
+    assert dl.status_code == 200
+    assert dl.headers["content-type"] == "application/pdf"
+    assert dl.content[:4] == b"%PDF"
+
+    rows_after = client.get("/api/admin/payment-claims", headers=admin).json()
+    assert next(r for r in rows_after if r["id"] == claim["id"])["has_pdf"] in (1, True)
+
+
+def test_payment_claim_generate_pdf_needs_a_matched_lead(client, monkeypatch):
+    admin = {"Authorization": f"Bearer {_admin_token()}"}
+    _wa_signed_post(client, monkeypatch, _wa_image_payload(
+        frm="19998887777", media_id="wamid-no-lead"))
+    rows = client.get("/api/admin/payment-claims", headers=admin).json()
+    claim = next(r for r in rows if r["media_id"] == "wamid-no-lead")
+    assert claim["lead_name"] is None
+    r = client.post(f"/api/admin/payment-claims/{claim['id']}/generate-pdf", headers=admin)
+    assert r.status_code == 422
+
+
 def test_payment_claim_resolve(client, monkeypatch):
     _wa_signed_post(client, monkeypatch, _wa_image_payload(media_id="wamid-media-2"))
     admin = {"Authorization": f"Bearer {_admin_token()}"}
