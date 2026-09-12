@@ -57,7 +57,14 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: openai/gpt-4o
+        # openai/gpt-4o needs OpenRouter credit (none purchased yet - see
+        # CLAUDE.md). nvidia/nemotron-3-ultra-550b-a55b:free is the best
+        # free-tier model found so far: noticeably better prose than the
+        # smaller nemotron-3-super, similar latency. NOTE: this blueprint
+        # value does not override a value already set by hand in Render's
+        # dashboard - the dashboard is what's actually live; change it
+        # there too.
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
 
       # ---- manual UPI-via-WhatsApp payments --------------------------
       - key: UPI_VPA

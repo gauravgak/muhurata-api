@@ -149,21 +149,34 @@ push to the GitHub repo Netlify watches.
 - **Saved people picker** — built, including the chip row *inside
   Naksha* (tap a saved name → free chart card, no quota hit; `people.js`
   also offers the signed-in user's own profile as a person).
-- **LLM provider** — currently `OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free`
-  (a real, working free model; the old `deepseek/*:free` slugs are gone
-  from OpenRouter). It's a reasoning model, so every OpenRouter call sets
+- **LLM provider** — currently `OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free`
+  (the old `deepseek/*:free` slugs are gone from OpenRouter; of the free
+  models tried, this 550B one gave noticeably better prose than the
+  smaller `nemotron-3-super-120b-a12b:free` at similar latency — worth
+  re-checking occasionally since OpenRouter's free lineup keeps changing
+  under us). It's a reasoning model, so every OpenRouter call sets
   `"reasoning": {"exclude": true}` (in both `naksha.py` and
-  `predictions.py`) or its scratchpad leaks into the reply; there's also
-  a belt-and-braces content check in `predictions.generate_section` that
-  refuses to cache anything that still looks like reasoning. Free-tier
-  daily request caps mean a 10-section PDF won't always fill every
-  section on the first try — `generate_many` retries once and caches
-  each section as it succeeds, so a given chart's PDF gets better over
-  repeat requests. `/api/health` reports `llm.configured` / `.provider` /
-  `.model` so this is never silently wrong again. Buying OpenRouter
-  credit and switching to a paid model (`gpt-4o-mini` for chat/tarot,
-  `gpt-4o` for the PDF) removes the cap entirely — revisit once volume
-  justifies it.
+  `predictions.py`) or its scratchpad leaks into the reply; `naksha.py`
+  also retries a chat turn once if the reply still reads like narrated
+  deliberation ("we only have get_kundali, there is no direct way...")
+  even with reasoning excluded, and `naksha._post` retries once on a
+  transient 502/503/504 from the model's upstream provider. There's a
+  matching belt-and-braces content check in
+  `predictions.generate_section` that refuses to cache anything that
+  still looks like reasoning. Free-tier daily request caps mean a
+  10-section PDF won't always fill every section on the first try —
+  `generate_many` retries once and caches each section as it succeeds,
+  so a given chart's PDF gets better over repeat requests. `/api/health`
+  reports `llm.configured` / `.provider` / `.model` so this is never
+  silently wrong again.
+  **The free tier has a real quality ceiling** — even the best free
+  model available isn't `gpt-4o`-level; that gap doesn't close with more
+  prompt engineering. Buying OpenRouter credit and switching to a paid
+  model removes it: `deepseek/deepseek-chat-v3-0324` (not a reasoning
+  model, no leak risk, excellent prose, a fraction of `gpt-4o`'s price)
+  is the best value pick for Naksha chat/tarot/predictions; save
+  `gpt-4o`/`gpt-4o-mini` for the flagship ₹51 PDF if budget allows both.
+  Revisit once there's credit on the account.
 - **Monetisation (in progress)** — see the roadmap: free chart + short
   overview stays the funnel; the full PDF is a ₹51 unlock. Payment
   collection is **manual UPI-via-WhatsApp**, not a gateway: `upi.py`

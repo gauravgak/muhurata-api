@@ -282,8 +282,20 @@ def _post(url, headers, body, timeout=30):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(),
         headers={**headers, "content-type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    # One retry on a transient upstream hiccup (a free model's provider
+    # pool returning 502/503 under load) - without this, Naksha just
+    # fails the whole turn on what's usually a one-off blip.
+    import time as _time
+    import urllib.error
+    for attempt in (1, 2):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if attempt == 1 and e.code in (502, 503, 504):
+                _time.sleep(1.2)
+                continue
+            raise
 
 
 def call_anthropic(messages: list) -> dict:
