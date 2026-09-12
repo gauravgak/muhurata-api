@@ -380,6 +380,11 @@ def reading(chart, running, devata, first_name=""):
         "greeting": f"{first_name}, here is your chart." if first_name else "Here is your chart.",
         "summary": summary,
         "lagna": lagna,
+        # a standalone one-line "things to watch" callout for the free
+        # result page, distinct from the fuller `lagna` paragraph above
+        # (which already weaves this same sentence in) - kept separate so
+        # a "challenges" section can be shown on its own.
+        "watch": asc_profile["watch"] if asc_profile else "",
         "mind": mind,
         "money": money,
         "health": health,

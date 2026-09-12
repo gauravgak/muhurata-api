@@ -432,6 +432,27 @@ def _append_tool_results(messages, norm, results):
                              "content": json.dumps(result)[:4000]})
 
 
+# Phrases a reasoning model uses to narrate its own deliberation straight
+# into the reply instead of a dedicated reasoning channel - "we only have
+# get_kundali, there is no direct way, but I must answer" is exactly this,
+# not an actual answer. Shared by the line-stripper below and the
+# leak-detector chat_turn uses to decide whether to retry.
+_LEAK_MARKERS = (
+    'the user is', 'the user wants', 'the user asked', 'i should ',
+    'let me think', 'let me ', 'i need to ', 'i must ', 'i will ',
+    "i'll ", 'my response', 'thinking:', 'reasoning:', 'analysis:',
+    'internal:', 'we only have', 'there is no direct', 'there is no tool',
+    'no tool for', "i don't have a tool", 'i do not have a tool',
+    'since there is no', 'given that there is no', 'we need to ',
+    'okay, so', 'first, i ', 'the question is',
+)
+
+
+def _looks_like_leak(text: str) -> bool:
+    low = (text or "").lower()
+    return any(m in low for m in _LEAK_MARKERS)
+
+
 def _clean_reply(text: str) -> str:
     """Strip thinking-token leaks and markdown from free-model responses.
     Free models on OpenRouter sometimes ignore system-prompt instructions
@@ -445,11 +466,7 @@ def _clean_reply(text: str) -> str:
     cleaned = []
     for line in lines:
         low = line.strip().lower()
-        if any(low.startswith(p) for p in [
-            'the user is', 'i should', 'let me think', 'i need to',
-            'the question is', 'i will', 'my response', 'thinking:',
-            'reasoning:', 'analysis:', 'internal:'
-        ]):
+        if low.startswith(_LEAK_MARKERS):
             continue
         cleaned.append(line)
     text = '\n'.join(cleaned).strip()
@@ -474,7 +491,16 @@ def chat_turn(history: list, chart_fn, horoscope_fn, match_fn) -> dict:
         norm = call_llm(messages)
 
         if norm["stop_reason"] != "tool_use" or not norm["tool_calls"]:
-            return {"reply": _clean_reply(norm["text"]), "tool_results": collected}
+            text = norm["text"]
+            # A reasoning model occasionally narrates its own deliberation
+            # as the whole reply ("we only have get_kundali, there is no
+            # direct way..."). One retry with the same messages usually
+            # gets a real answer instead - cheap insurance for a live chat.
+            if _looks_like_leak(text):
+                retry = call_llm(messages)
+                if retry["stop_reason"] != "tool_use" and not _looks_like_leak(retry.get("text") or ""):
+                    text = retry["text"]
+            return {"reply": _clean_reply(text), "tool_results": collected}
 
         _append_assistant_turn(messages, norm)
 
